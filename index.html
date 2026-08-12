@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Catálogo & Marketplace</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans">
+
+  <!-- Encabezado -->
+  <header class="bg-slate-900 text-white p-4 flex justify-between items-center shadow-lg sticky top-0 z-50">
+    <h1 class="text-xl font-bold tracking-wide">Mi Catálogo Web</h1>
+    <button onclick="toggleAdmin()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition">
+      Panel Admin
+    </button>
+  </header>
+
+  <!-- Panel Admin (Oculto por defecto) -->
+  <div id="adminPanel" class="hidden max-w-4xl mx-auto my-6 p-6 bg-white rounded-lg shadow-md border border-gray-200">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-lg font-bold text-gray-800">Administrar Productos</h2>
+      <button onclick="toggleAdmin()" class="text-gray-500 hover:text-gray-700 text-lg">✕</button>
+    </div>
+
+    <form id="productForm" class="space-y-4">
+      <input type="hidden" id="productId" />
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Título del Producto</label>
+        <input type="text" id="title" required class="w-full border rounded p-2 text-sm mt-1 focus:ring-2 focus:ring-blue-500 outline-none" />
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Precio Anterior ($)</label>
+          <input type="number" step="0.01" id="oldPrice" placeholder="Ej: 25.00 (Opcional)" class="w-full border rounded p-2 text-sm mt-1 focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Precio Promoción ($)</label>
+          <input type="number" step="0.01" id="promoPrice" required placeholder="Ej: 19.99" class="w-full border rounded p-2 text-sm mt-1 focus:ring-2 focus:ring-blue-500 outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Imágenes (Una o varias)</label>
+          <input type="file" id="images" multiple accept="image/*" class="w-full text-sm mt-1" />
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Descripción</label>
+        <textarea id="description" rows="3" required class="w-full border rounded p-2 text-sm mt-1 focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
+      </div>
+
+      <button type="submit" id="saveBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm w-full font-bold transition">
+        Guardar Producto
+      </button>
+    </form>
+  </div>
+
+  <!-- Catálogo Público -->
+  <main class="max-w-6xl mx-auto p-6">
+    <div id="productGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+      <!-- Los productos se cargarán dinámicamente aquí -->
+    </div>
+  </main>
+
+  <script>
+    // Configuración de tu proyecto Firebase
+    const firebaseConfig = {
+      apiKey: "TU_API_KEY",
+      authDomain: "TU_PROJECT_ID.firebaseapp.com",
+      projectId: "TU_PROJECT_ID",
+      storageBucket: "TU_PROJECT_ID.appspot.com",
+      messagingSenderId: "TU_SENDER_ID",
+      appId: "TU_APP_ID"
+    };
+
+    // Datos de contacto y clave de administración
+    const TELEFONO_WHATSAPP = "593967287360";
+    const PIN_ADMIN = "1234";
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const storage = firebase.storage();
+
+    function toggleAdmin() {
+      const panel = document.getElementById('adminPanel');
+      if (panel.classList.contains('hidden')) {
+        const pin = prompt("Ingresa la clave de administración:");
+        if (pin === PIN_ADMIN) {
+          panel.classList.remove('hidden');
+        } else if (pin !== null) {
+          alert("Clave incorrecta.");
+        }
+      } else {
+        panel.classList.add('hidden');
+      }
+    }
+
+    // Escuchar cambios en la base de datos
+    db.collection("productos").onSnapshot((snapshot) => {
+      const grid = document.getElementById("productGrid");
+      grid.innerHTML = "";
+      
+      if (snapshot.empty) {
+        grid.innerHTML = `<p class="col-span-full text-center text-gray-500 py-10">No hay productos registrados aún.</p>`;
+        return;
+      }
+
+      snapshot.forEach((doc) => {
+        const item = doc.data();
+        const id = doc.id;
+        const mainImage = item.images && item.images.length > 0 ? item.images[0] : 'https://via.placeholder.com/300?text=Sin+Imagen';
+        
+        // Bloque de precios
+        const oldPriceHtml = item.oldPrice ? `<span class="text-gray-400 line-through text-sm font-semibold mr-2">$${parseFloat(item.oldPrice).toFixed(2)}</span>` : '';
+        const promoPriceHtml = `<span class="text-green-600 font-extrabold text-2xl">$${parseFloat(item.promoPrice).toFixed(2)}</span>`;
+
+        // Mensaje personalizado para WhatsApp
+        const mensajeWa = encodeURIComponent(`¡Hola! Estoy interesado en el producto: *${item.title}* por el valor de oferta de *$${parseFloat(item.promoPrice).toFixed(2)}*. ¿Tienen disponibilidad?`);
+        const urlWa = `https://wa.me/${TELEFONO_WHATSAPP}?text=${mensajeWa}`;
+
+        grid.innerHTML += `
+          <div class="bg-white rounded-lg shadow-md border overflow-hidden flex flex-col justify-between hover:shadow-lg transition relative">
+            ${item.oldPrice ? `<span class="absolute top-2 right-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded shadow">OFERTA</span>` : ''}
+            <div>
+              <img src="${mainImage}" class="h-52 w-full object-cover" alt="${item.title}">
+              <div class="p-4">
+                <h3 class="font-bold text-lg text-gray-900 mb-1">${item.title}</h3>
+                <div class="flex items-baseline mb-2">
+                  ${oldPriceHtml}
+                  ${promoPriceHtml}
+                </div>
+                <p class="text-gray-600 text-sm whitespace-pre-line mb-4">${item.description}</p>
+              </div>
+            </div>
+            
+            <div class="p-4 pt-0 space-y-2">
+              <a href="${urlWa}" target="_blank" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 px-4 rounded flex items-center justify-center gap-2 text-sm transition">
+                <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.842-1.001z"/></svg>
+                Consultar por WhatsApp
+              </a>
+
+              <div class="flex gap-2 border-t pt-3">
+                <button onclick="editProduct('${id}', '${item.title}', '${item.oldPrice || ''}', ${item.promoPrice}, \`${item.description}\`)" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded text-xs font-semibold transition">Editar</button>
+                <button onclick="deleteProduct('${id}')" class="flex-1 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-xs font-semibold transition">Eliminar</button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    });
+
+    // Guardar o Editar Producto
+    document.getElementById("productForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("productId").value;
+      const title = document.getElementById("title").value;
+      const oldPrice = document.getElementById("oldPrice").value ? parseFloat(document.getElementById("oldPrice").value) : null;
+      const promoPrice = parseFloat(document.getElementById("promoPrice").value);
+      const description = document.getElementById("description").value;
+      const fileInput = document.getElementById("images");
+
+      let imageUrls = [];
+
+      if (fileInput.files.length > 0) {
+        for (let file of fileInput.files) {
+          const storageRef = storage.ref(`productos/${Date.now()}_${file.name}`);
+          const snapshot = await storageRef.put(file);
+          const url = await snapshot.ref.getDownloadURL();
+          imageUrls.push(url);
+        }
+      }
+
+      const data = { title, oldPrice, promoPrice, description };
+      if (imageUrls.length > 0) data.images = imageUrls;
+
+      if (id) {
+        await db.collection("productos").doc(id).update(data);
+      } else {
+        if (!data.images) data.images = [];
+        await db.collection("productos").add(data);
+      }
+
+      document.getElementById("productForm").reset();
+      document.getElementById("productId").value = "";
+      alert("¡Producto guardado exitosamente!");
+    });
+
+    function editProduct(id, title, oldPrice, promoPrice, description) {
+      document.getElementById("adminPanel").classList.remove("hidden");
+      document.getElementById("productId").value = id;
+      document.getElementById("title").value = title;
+      document.getElementById("oldPrice").value = oldPrice;
+      document.getElementById("promoPrice").value = promoPrice;
+      document.getElementById("description").value = description;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async function deleteProduct(id) {
+      if (confirm("¿Estás seguro de que deseas eliminar este producto?")) {
+        await db.collection("productos").doc(id).delete();
+      }
+    }
+  </script>
+</body>
+</html>
